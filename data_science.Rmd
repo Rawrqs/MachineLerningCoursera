@@ -1,0 +1,135 @@
+---
+title: "Practical Machine Learning PA"
+author: "Jakub Winter aka Rawrqs on GitHub"
+date: "Friday, August 22, 2014"
+output: html_document
+---
+##Summary
+
+In this project, the goal was to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways.
+The goal of your project was to predict the manner in which they did the exercise. This is the "classe" variable in the training set.
+For this purpose i have used the random forest technique while using two approaches. After using the first approach for predicting test cases from coursera i have  classified correctly all of the cases and the accuracy for my testing set was over 99%.
+
+##Cleaning the data
+###Data selection
+
+The data contains 160 columns and and 19622 rows.Some of the columns and rows were summaries of other rows and columns, thus i have removed those. I found out that it was enough to remove all rows with the new_windows argument set to "no". I have also manually choosen variables of interest (which i searched manually and passed to variable choose) which are presented below. After doing the abovementioned there were no more NA's in data.
+
+```{r, warning=FALSE, comment=NA}
+data <- read.csv("C:/Users/Kuba/Desktop/pml-training.csv", header=TRUE, sep=",", na.strings= c("NA", ""))
+choose <- c(2, 8:11, 37:49, 60:68, 84:86, 102, 113:124, 140, 151:159, 160)
+#removing all rows that are summaries
+data.2 <- data[data$new_window == "no",]
+#creating only data with parameters of interest
+data.3 <- data[, choose]
+colnames(data.3)
+```
+
+After doing the abovementioned there were no more NA's in data.
+
+```{r, warning=FALSE, comment=NA}
+any(is.na(data.3)==TRUE)
+
+```
+
+##Random forest
+I have choosen to use random forest for my modelling, therefore there was no need for creating part of data for cross validation. I decided to split the data into training and testing set by the ratio of 0.7 training set, and 0.3 test set using default sampling options from the createDataPartition in the caret package. I expect the out of sample error to be rather small, as the rf does not overfitt and has some nice algorith foraveraging the predictors.
+
+```{r, warning=FALSE, comment=NA}
+library(caret)
+
+#?createDataPartition
+inTrain <- createDataPartition(data.3$classe, p = 0.7, list = FALSE)
+training = data.3[inTrain,]
+testing = data.3[-inTrain,]
+```
+
+I have decided to do two approaches:
+
+* First - to fit a model for every participant with a dependend variable name using all possible information to learn the model
+* Secound - to fit a model for every participant separately, which would catch thier specific characteristics of human body 
+
+Later on I will use the only First model, but I will also shortly compare results from both approaches. 
+
+```{r, cache=TRUE}
+library(doParallel)
+registerDoParallel(4)
+library(e1071)
+fit <- train(classe ~., data = training, method = "rf")
+fit.adelmo <- train(classe ~., data = subset(training, user_name == "adelmo")[,-1], method = "rf")
+fit.carlitos <- train(classe ~., data = subset(training, user_name == "carlitos")[,-1], method = "rf")
+fit.charles <- train(classe ~., data = subset(training, user_name == "charles")[,-1], method = "rf")
+fit.eurico <- train(classe ~., data = subset(training, user_name == "eurico")[,-1], method = "rf")
+fit.jeremy <- train(classe ~., data = subset(training, user_name == "jeremy")[,-1], method = "rf")
+fit.pedro <- train(classe ~., data = subset(training, user_name == "pedro")[,-1], method = "rf")
+
+```
+
+## Variable importance
+
+The plot below presents normalized variable importance for the first apprach. We can see that roll_belt was the most important variable while classyfing to the group. We can see that user_name may not be found in the top 20 variables
+
+```{r, warning=FALSE, comment=NA}
+plot(varImp(fit), top = 20)
+```
+
+## Confusion Matrix for approach 1
+
+```{r, warning=FALSE, comment=NA}
+confusionMatrix(predict(fit,newdata=testing[,-ncol(testing)]),testing$classe)
+```
+
+The accuracy is pretty satisfiying which is `r confusionMatrix(predict(fit,newdata=testing[,-ncol(testing)]),testing$classe)[[3]][1]`. We can also see that most incorrectly classified cases were of type D.
+Let's now compare this accuracy to the accuracy of secound approach.
+
+
+```{r, warning=FALSE, comment=NA}
+
+w.1 <- nrow(subset(testing, user_name == "adelmo"))
+o.1 <- confusionMatrix(predict(fit.adelmo,newdata=subset(testing[,-ncol(testing)], user_name == "adelmo")[,-1]),subset(testing, user_name == "adelmo")$classe)[[3]][1]
+
+o.2 <- confusionMatrix(predict(fit.carlitos,newdata=subset(testing[,-ncol(testing)], user_name == "carlitos")[,-1]),subset(testing, user_name == "carlitos")$classe)[[3]][1]
+w.2 <- nrow(subset(testing, user_name == "carlitos"))
+
+o.3 <- confusionMatrix(predict(fit.charles,newdata=subset(testing[,-ncol(testing)], user_name == "charles")[,-1]),subset(testing, user_name == "charles")$classe)[[3]][1]
+w.3 <- nrow(subset(testing, user_name == "charles"))
+
+o.4 <- confusionMatrix(predict(fit.eurico,newdata=subset(testing[,-ncol(testing)], user_name == "eurico")[,-1]),subset(testing, user_name == "eurico")$classe)[[3]][1]
+w.4 <- nrow(subset(testing, user_name == "eurico"))
+
+o.5 <- confusionMatrix(predict(fit.jeremy,newdata=subset(testing[,-ncol(testing)], user_name == "jeremy")[,-1]),subset(testing, user_name == "jeremy")$classe)[[3]][1]
+w.5 <- nrow(subset(testing, user_name == "jeremy"))
+
+o.6 <- confusionMatrix(predict(fit.pedro,newdata=subset(testing[,-ncol(testing)], user_name == "pedro")[,-1]),subset(testing, user_name == "pedro")$classe)[[3]][1]
+w.6 <- nrow(subset(testing, user_name == "pedro"))
+
+```
+
+After calculating accuracy statistic and weighting it by the number of testing cases for each user i have obtained a total accuracy for the secound approach of `r (o.1*w.1+o.2*w.2+o.3*w.3+o.4*w.4+o.5*w.5+o.6*w.6)/sum(w.1,w.2,w.3,w.4,w.5,w.6)`. It is slightly but not noticably better. I decided to use the first approach for the coursera-testing-set
+
+##Predicting the testing data set from Coursera
+
+The secound part of assignment assumes predicting  set of 20 observations. The predictions from my first model are as follows:
+
+```{r, cache=TRUE, warning=FALSE, comment=NA}
+
+data.answers <- read.csv("C:/Users/Kuba/Desktop/pml-testing.csv", header=TRUE, sep=",", na.strings= c("NA", ""))
+
+answers <- predict(fit,data.answers)
+print(answers)
+
+```
+##Anwers for the secound part of assigment
+ Below is a code that generates anwers for the secound part of the assignment.
+
+```{r, cache=TRUE, warning=FALSE, comment=NA}
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+
+pml_write_files(answers)
+```
